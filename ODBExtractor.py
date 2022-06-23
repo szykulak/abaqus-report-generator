@@ -35,7 +35,7 @@ class ODBExtractor(object):
         self.open_odbs()
 
     def open_odbs(self):
-        config = open('C:\\Users\\asus\\Desktop\\studia\\IIstopien\\magisterka\\UserData.json') #TODO zeby nie byla zahardkodowana 
+        config = open("C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json") #TODO zeby nie byla zahardkodowana 
 
         data = json.load(config)
         odb_dir_path = data["ODB directory path"]
@@ -52,7 +52,7 @@ class ODBExtractor(object):
         
 
     def execute_without_ui(self, odb_object, name):
-        file = open('C:\\Users\\asus\\Desktop\\studia\\IIstopien\\magisterka\\UserData.json')
+        file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
 
         data = json.load(file)
         step_name = str(data["Step name"])
@@ -68,8 +68,12 @@ class ODBExtractor(object):
         value=str(data["Value"])
         minimum=data["Minimum"]
         maximum=data["Maximum"]
+        views=data["Views"].split(",")
 
         self.export_to_csv(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum)
+        self.take_model_screenshots(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum,views)
+        #tu tez bd reszta wywolywana 
+        #tu tez bd reszta wywolywana 
 
     def export_to_csv(self, odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum):
 
@@ -797,6 +801,78 @@ class ODBExtractor(object):
                 for j in range(len(tabFilesHandler)):
                     tabFilesHandler[j].close()
                 tabFilesHandler = []
+
+    def take_model_screenshots(self, odb_object, step_name,frames,set_name,field_output_names,instance_name,
+                               instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum, views):
+        frames_list = self.parse_to_frames(frames)
+        field_outputs = self.parse_to_field_output(field_output_names)
+        # print "frames list " + str(framesList)
+            
+        #     file_name = folder_path
+        #     file_name += "\\"
+        #     file_name += str(frame)
+        #     file_name += "\\"
+           
+        #     print("STARTING EXPORTING")
+
+        #     modelPath = file_name + "\\model\\"
+
+        #     try:  
+        #         os.makedirs(modelPath)
+        #     except OSError as error:
+        #         print " " + str(error)
+
+        #     fieldoutpuNamesTab = self.parse_to_field_output(field_output_names)
+        #todo ustawic biale tlo
+        # https://classes.engineering.wustl.edu/2009/spring/mase5513/abaqus/docs/v6.5/books/cmd/default.htm?startat=pt03ch07s02.html
+        session.viewports['Viewport: 1'].setValues(displayedObject=odb_object)
+        folder_path += "\\exported\\"
+        folder_path += folder_name 
+        folder_path += "\\"
+        folder_path += file_name 
+        folder_path += "\\"
+        screenshots_dir_path = folder_path + "screenshots"
+        screenshots_dir_path += "\\"
+        screenshots_dir_path += step_name
+        screenshots_dir_path += "\\"
+
+        #todo pamietac zeby tworzyc folder za kazdym razem jak modyfikuje sciezke bo samo sie nie zrobi 
+        # dodad jeszze folder na step maybe
+        # mapowanie na invariant/component itd ??? 
+
+        for frame in frames_list:
+            session.viewports['Viewport: 1'].odbDisplay.setFrame(step=step_name, 
+            frame=frame)
+            screenshot_path = screenshots_dir_path + str(frame)
+            screenshot_path += "\\"
+            for field_output in field_outputs: #??
+                screenshot_path += field_output
+                screenshot_path += "\\"
+                session.viewports['Viewport: 1'].odbDisplay.setPrimaryVariable(
+                variableLabel=field_output, outputPosition=INTEGRATION_POINT,refinement=(
+                COMPONENT, 'S11'), )
+                try:  
+                    os.makedirs(screenshot_path)
+                except OSError as error:
+                    error
+                
+            for view in views: #albo zapisac wszystkie rzuty w jednym pliku????
+                screenshot_name = screenshot_path +view
+                # todo screeny dla poszczegolnych frames, field outputs etc
+                # test_path = "C:\\tmp\\test\\exported\\plugintest\\jakis_model2\\"+view # musi byc folder utworzony wczesniej i nie musi byc relative path do folderu gdzie jest plugin
+                session.viewports['Viewport: 1'].view.setValues(session.views[str(view)])
+                session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+
+           
+
+
+
+        #todo thincc - najpierw zrobic screeny dla rzutow dla byle jakiego stepu dla calego modelu potem myslec co dalej 
+    #     session.printToFile(
+    # fileName=filepathImage,
+    # format=PNG, canvasObjects=(session.viewports['Viewport: 1'],
+    # session.viewports['Viewport: 3'], session.viewports['Viewport: 2']))  
+        
 
 
 

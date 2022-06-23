@@ -1,18 +1,17 @@
 {
-    "ODB directory path": "C:/tmp/Contact1-GC.odb",
-    "Step name": "Load",
-    "Frames": "35",
-    "Field output names": "S,PEEQ",
+    "ODB directory path": "C:\\tmp\\odb\\",
+    "Step name": "Rolls-right",
+    "Frames": "0,1",
+    "Field output names": "S",
     "Set name": "",
-    "Instance name": "BEAM-1",
+    "Instance name": "",
     "Instance set name": "", 
-    "Folder path": "C:/users/asus/Desktop",
+    "Folder path": "C:\\tmp\\test",
     "Folder name": "plugintest",
-    "File name": "C:/tmp/Contact1-GC.odb",
-    "Field output": "S",
-    "Value": "S11",
-    "Min": 0,
-    "Max": 70
-
+    "Field output": "",
+    "Value": "",
+    "Minimum": "",
+    "Maximum": "",
+    "Views": "Front,Back,Top,Bottom"
 
 }
