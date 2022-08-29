@@ -23,13 +23,14 @@ import displayGroupOdbToolset as dgo
 import connectorBehavior
 from abaqus import session
 import json 
+from collections import OrderedDict
+from FieldOutputUtils import set_field_output_display_variables
 
 
 class ODBExtractor(object):
 
     def __init__(self): 
-        # self.odbs = []
-        pass 
+        self.field_output_display_vars = set_field_output_display_variables() 
 
     def run_extractor(self):
         self.open_odbs()
@@ -50,8 +51,8 @@ class ODBExtractor(object):
             else:
                 continue
         
-
     def execute_without_ui(self, odb_object, name):
+        #todo przerzucic to do jakiejs metody ktora zwraca wczytany plik
         file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
 
         data = json.load(file)
@@ -68,12 +69,14 @@ class ODBExtractor(object):
         value=str(data["Value"])
         minimum=data["Minimum"]
         maximum=data["Maximum"]
-        views=data["Views"].split(",")
+        views=data["Views"]
+        fo_vars = data["Field output display variables"]
+        
 
-        self.export_to_csv(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum)
-        self.take_model_screenshots(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum,views)
-        #tu tez bd reszta wywolywana 
-        #tu tez bd reszta wywolywana 
+        # self.export_to_csv(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum)
+        self.take_model_screenshots(odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars)
+        # odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars
+         
 
     def export_to_csv(self, odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum):
 
@@ -802,30 +805,15 @@ class ODBExtractor(object):
                     tabFilesHandler[j].close()
                 tabFilesHandler = []
 
-    def take_model_screenshots(self, odb_object, step_name,frames,set_name,field_output_names,instance_name,
-                               instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum, views):
+    def take_model_screenshots(self, odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars):
+        views_list=views.split(",")
         frames_list = self.parse_to_frames(frames)
-        field_outputs = self.parse_to_field_output(field_output_names)
-        # print "frames list " + str(framesList)
-            
-        #     file_name = folder_path
-        #     file_name += "\\"
-        #     file_name += str(frame)
-        #     file_name += "\\"
-           
-        #     print("STARTING EXPORTING")
-
-        #     modelPath = file_name + "\\model\\"
-
-        #     try:  
-        #         os.makedirs(modelPath)
-        #     except OSError as error:
-        #         print " " + str(error)
-
-        #     fieldoutpuNamesTab = self.parse_to_field_output(field_output_names)
-        #todo ustawic biale tlo
-        # https://classes.engineering.wustl.edu/2009/spring/mase5513/abaqus/docs/v6.5/books/cmd/default.htm?startat=pt03ch07s02.html
+        session.graphicsOptions.setValues(backgroundStyle=SOLID, 
+        backgroundColor='#FFFFFF')
         session.viewports['Viewport: 1'].setValues(displayedObject=odb_object)
+        session.mdbData.summary()
+        session.viewports['Viewport: 1'].odbDisplay.display.setValues(plotState=(
+        CONTOURS_ON_DEF, ))
         folder_path += "\\exported\\"
         folder_path += folder_name 
         folder_path += "\\"
@@ -834,48 +822,120 @@ class ODBExtractor(object):
         screenshots_dir_path = folder_path + "screenshots"
         screenshots_dir_path += "\\"
         screenshots_dir_path += step_name
-        screenshots_dir_path += "\\"
-
-        #todo pamietac zeby tworzyc folder za kazdym razem jak modyfikuje sciezke bo samo sie nie zrobi 
-        # dodad jeszze folder na step maybe
-        # mapowanie na invariant/component itd ??? 
+        screenshots_dir_path += "\\" 
+        plot_limits = self.parse_contour_plot_limits()
 
         for frame in frames_list:
             session.viewports['Viewport: 1'].odbDisplay.setFrame(step=step_name, 
             frame=frame)
             screenshot_path = screenshots_dir_path + str(frame)
             screenshot_path += "\\"
-            for field_output in field_outputs: #??
-                screenshot_path += field_output
+            screenshot_path_copy_1 = screenshot_path
+            display_var_dict = self.parse_display_variables_to_dictionary(fo_vars)
+            display_group = self.create_display_group()
+            session.viewports['Viewport: 1'].odbDisplay.setValues(visibleDisplayGroups=(display_group,     ))
+            session.viewports['Viewport: 1'].odbDisplay.displayGroupInstances[str(display_group.name)].setValues(
+             lockOptions=OFF)  
+
+            # TODO set contour plot limits 
+            for key in display_var_dict:
+                #display_var_dict[key] = lista refinementow
+                screenshot_path = screenshot_path_copy_1
+                screenshot_path += key
                 screenshot_path += "\\"
-                session.viewports['Viewport: 1'].odbDisplay.setPrimaryVariable(
-                variableLabel=field_output, outputPosition=INTEGRATION_POINT,refinement=(
-                COMPONENT, 'S11'), )
-                try:  
-                    os.makedirs(screenshot_path)
-                except OSError as error:
-                    error
-                
-            for view in views: #albo zapisac wszystkie rzuty w jednym pliku????
-                screenshot_name = screenshot_path +view
-                # todo screeny dla poszczegolnych frames, field outputs etc
-                # test_path = "C:\\tmp\\test\\exported\\plugintest\\jakis_model2\\"+view # musi byc folder utworzony wczesniej i nie musi byc relative path do folderu gdzie jest plugin
-                session.viewports['Viewport: 1'].view.setValues(session.views[str(view)])
-                session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+                screenshot_path_copy_2 = screenshot_path
+                print "key " + str(key)
+                print "value" + str(display_var_dict[key])
 
-           
+                if type(display_var_dict[key]) == OrderedDict:
+                    secondary_display_vars = display_var_dict[key]
+                    for var in secondary_display_vars:
+                        print "var: " + str(var)
+                        screenshot_path = screenshot_path_copy_2
+                        screenshot_path += str(var)
+                        screenshot_path += "\\"
+                        try:  
+                            os.makedirs(screenshot_path)
+                        except OSError as error:
+                            error
+ 
+                        fo_object = next((x for x in self.field_output_display_vars if (x.var_label == key 
+                                and x.refinement[1]==str(var))), None) 
+                        session.viewports['Viewport: 1'].odbDisplay.setPrimaryVariable(
+                                variableLabel=fo_object.var_label, outputPosition=fo_object.output_position,refinement=fo_object.refinement, )
+                        if secondary_display_vars[var] != [None]:
+                            self.set_contour_plot_limits(secondary_display_vars[var][0], secondary_display_vars[var][1])
+                        
+                    
+                        for view in views_list: 
+                            screenshot_name = screenshot_path + view
+                            session.viewports['Viewport: 1'].view.setValues(session.views[str(view)])
+                            session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+                        
+                else:
+                    screenshot_path = screenshot_path_copy_1
+                    screenshot_path += key
+                    screenshot_path += "\\" 
+                    try:
+                        os.makedirs(screenshot_path)
+                    except OSError as error:
+                        error
+                    fo_object = next((x for x in self.field_output_display_vars if (x.var_label == key 
+                                and x.refinement==None)), None)
+                    session.viewports['Viewport: 1'].odbDisplay.setPrimaryVariable(
+                    variableLabel=fo_object.var_label, outputPosition=fo_object.output_position, )
+                    if display_var_dict[key] != [None]:
+                        self.set_contour_plot_limits(display_var_dict[key][0], display_var_dict[key][1])
 
 
 
-        #todo thincc - najpierw zrobic screeny dla rzutow dla byle jakiego stepu dla calego modelu potem myslec co dalej 
-    #     session.printToFile(
-    # fileName=filepathImage,
-    # format=PNG, canvasObjects=(session.viewports['Viewport: 1'],
-    # session.viewports['Viewport: 3'], session.viewports['Viewport: 2']))  
+                    for view in views_list:
+                            screenshot_name = screenshot_path +view
+                            session.viewports['Viewport: 1'].view.setValues(session.views[str(view)])
+                            session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+                    screenshot_path = screenshot_path_copy_1
+    
+
+    def create_display_group(self):
+        # todo chyba zrobie tylko jeden item type at a time - dropdown w ui
+        file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
+        data = json.load(file)
+
+        item_type = data["Item type to display"] 
+        items_to_display =[str(p) for p in data["Names of items to display"].split(",")]
+        # elements_to_display = data["Elements to display"]
+        # nodes_to_display = data["Nodes to display"]
+        # surfaces_to_display = data["Surfaces to display"]
         
+        session.linkedViewportCommands.setValues(_highlightLinkedViewports=True)
+        if item_type.lower() == "parts":
+            leaf = dgo.LeafFromPartInstance(partInstanceName=(items_to_display))
+        elif item_type.lower() == "elements":
+            leaf = dgo.LeafFromElementSets(elementSets=(items_to_display))
+        elif item_type.lower() == "nodes": #not supported in contour plot mode?
+            leaf = dgo.LeafFromNodeSets(nodeSets=(items_to_display))
+        elif item_type.lower() == "surfaces":
+            leaf = dgo.LeafFromSurfaceSets(surfaceSets=(items_to_display))
+        else:
+            print "nie wolno" # todo wywal blad 
+        session.viewports['Viewport: 1'].odbDisplay.displayGroup.intersect(leaf=leaf)
+        dg = session.viewports['Viewport: 1'].odbDisplay.displayGroup
+        dg = session.DisplayGroup(name='dg1', objectToCopy=dg)
+        return dg
 
+    def set_contour_plot_limits(self,min,max):
+        session.viewports['Viewport: 1'].odbDisplay.contourOptions.setValues(maxAutoCompute=OFF, minAutoCompute=OFF) 
+        session.viewports['Viewport: 1'].odbDisplay.contourOptions.setValues(maxAutoCompute=OFF, maxValue=max, 
+                                                                             minAutoCompute=OFF, minValue=min)
 
-
+    def parse_contour_plot_limits(self):
+        # returns a 2d array eg [[21,37], [21,37],[21,37], ['']]
+        file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
+        data = json.load(file)
+        contour_plot_limits = [[float(y) if y != "" else None for y in x.split(",")] \
+                               for x in data["Contour plot limits"].split(";")] 
+        return contour_plot_limits
+               
     def removeRedundant(self, listTmp):
         listTmp.sort()
         listTmp2 = []
@@ -886,9 +946,9 @@ class ODBExtractor(object):
                 prev = listTmp[i]
         return listTmp2
 
-        
+    #PARSERS   
     def parse_to_field_output(self, field_outputs_string):
-        field_output_list = field_outputs_string.split(",")
+        field_output_list = field_outputs_string.split(",") 
 
         return field_output_list
 
@@ -934,5 +994,52 @@ class ODBExtractor(object):
         if tmp != "":
             frameList.append(int(tmp))
         return frameList
+
+    def parse_display_variables_to_dictionary(self, display_variable_string):
+        # "S:S11,Mises;TEMP;PEEQ"
+        display_variable_dict = OrderedDict()
+        contour_plot_limits = self.parse_contour_plot_limits()
+        chunk_sizes = []
+        # todo  
+        temp1 = display_variable_string.split(";")
+        for t in temp1:
+            #przykladowo t = "S:S11,Mises" albo TEMP
+            dict_key = None
+            dict_values = []
+            if ":" in t:
+                dict_key = t.split(":")[0]
+                dict_values = t.split(":")[1].split(",")  
+                chunk_sizes.append(len(dict_values))
+            else:
+                dict_key = t 
+                chunk_sizes.append(1)
+                # dict values = jakis chunk ?? 
+            display_variable_dict[dict_key] = dict_values
+
+        # podzielenie tablicy z limitami na kawalki wielkosci tablic z secondary disp variables  
+        i = 0
+        contour_plot_limits_split = []
+        for cs in chunk_sizes:
+            contour_plot_limits_split.append(contour_plot_limits[i:i+cs])
+            i +=cs
+        
+        #iteracja po wczesniej stworzonym dictionary zeby dodac plot limits
+        print "dict before: "+ str(display_variable_dict) 
+        print "podzielona tabica: "+ str(contour_plot_limits_split)
+        for k_index, key in enumerate(display_variable_dict):
+            if display_variable_dict[key]!=[]:
+                plot_limits = OrderedDict()
+                disp_var_array = display_variable_dict[key]
+                for v_index, var in enumerate(disp_var_array):
+                    print "disp var arrray: " + str(disp_var_array)
+                    print "k index: " + str(k_index)
+                    print "v index: " + str(v_index)
+
+                    plot_limits[var]=contour_plot_limits_split[k_index][v_index]
+            else:
+                plot_limits =  contour_plot_limits_split[k_index][0]
+            display_variable_dict[key] = plot_limits
+        print "display variable dict: "+ str(display_variable_dict)
+        return display_variable_dict
 
     

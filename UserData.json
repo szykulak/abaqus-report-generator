@@ -1,8 +1,8 @@
 {
-    "ODB directory path": "C:\\tmp\\odb\\",
-    "Step name": "Rolls-right",
-    "Frames": "0,1",
-    "Field output names": "S",
+    "ODB directory path": "C:\\tmp\\odb\\3d_std\\",
+    "Step name": "Step-1",
+    "Frames": "5,98,99",
+    "Field output names": "S,U",
     "Set name": "",
     "Instance name": "",
     "Instance set name": "", 
@@ -12,6 +12,9 @@
     "Value": "",
     "Minimum": "",
     "Maximum": "",
-    "Views": "Front,Back,Top,Bottom"
-
+    "Views": "Front,Back,Top,Bottom",
+    "Field output display variables": "RM:RM1;RF:Magnitude;PEEQ;S:Mises,S11",
+    "Contour plot limits": "0.004,0.01785;0.08,0.29;;221.8,1343.0;21.0,37.0",
+    "Item type to display":"PARTS",
+    "Names of items to display":"BERKOVICH_200NM-1"
 }
