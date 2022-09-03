@@ -6,9 +6,9 @@ thisDir = os.path.dirname(thisPath)
 
 toolset = getAFXApp().getAFXMainWindow().getPluginToolset()
 toolset.registerGuiMenuButton(
-    buttonText='Report generator', 
-    object=Activator(os.path.join(thisDir, 'report_generator_pluginDB.py')),
-    kernelInitString='import plugin',
+    buttonText='Report generator UI', 
+    object=Activator(os.path.join(thisDir, 'report_generator_uiDB.py')),
+    kernelInitString='',
     messageId=AFXMode.ID_ACTIVATE,
     icon=None,
     applicableModules=ALL,

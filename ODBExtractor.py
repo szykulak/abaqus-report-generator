@@ -29,16 +29,18 @@ from FieldOutputUtils import set_field_output_display_variables
 
 class ODBExtractor(object):
 
-    def __init__(self): 
+    def __init__(self, user_data): 
+        self.user_data = user_data
         self.field_output_display_vars = set_field_output_display_variables() 
 
     def run_extractor(self):
         self.open_odbs()
 
     def open_odbs(self):
-        config = open("C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json") #TODO zeby nie byla zahardkodowana 
+        # config = self.user_data
+        # config = open("C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json") #TODO zeby nie byla zahardkodowana 
 
-        data = json.load(config)
+        data = self.user_data
         odb_dir_path = data["ODB directory path"]
 
         for odb_file in os.listdir(odb_dir_path):
@@ -53,9 +55,10 @@ class ODBExtractor(object):
         
     def execute_without_ui(self, odb_object, name):
         #todo przerzucic to do jakiejs metody ktora zwraca wczytany plik
-        file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
+        # file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
 
-        data = json.load(file)
+        # data = json.load(file)
+        data = self.user_data
         step_name = str(data["Step name"])
         frames = str(data["Frames"])
         field_output_names=str(data["Field output names"])
@@ -71,10 +74,14 @@ class ODBExtractor(object):
         maximum=data["Maximum"]
         views=data["Views"]
         fo_vars = data["Field output display variables"]
+        export_to_csv = data["Export to csv"]
+        take_screenshots = data["Take model screenshots"]
+        include_mesh_data = data["Include mesh data"]
         
-
-        # self.export_to_csv(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum)
-        self.take_model_screenshots(odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars)
+        if export_to_csv:
+            self.export_to_csv(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum)
+        if take_screenshots:
+            self.take_model_screenshots(odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars)
         # odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars
          
 
@@ -898,8 +905,9 @@ class ODBExtractor(object):
 
     def create_display_group(self):
         # todo chyba zrobie tylko jeden item type at a time - dropdown w ui
-        file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
-        data = json.load(file)
+        # file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
+        # data = json.load(file)
+        data = self.user_data
 
         item_type = data["Item type to display"] 
         items_to_display =[str(p) for p in data["Names of items to display"].split(",")]
@@ -930,8 +938,8 @@ class ODBExtractor(object):
 
     def parse_contour_plot_limits(self):
         # returns a 2d array eg [[21,37], [21,37],[21,37], ['']]
-        file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
-        data = json.load(file)
+        # file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
+        data = self.user_data
         contour_plot_limits = [[float(y) if y != "" else None for y in x.split(",")] \
                                for x in data["Contour plot limits"].split(";")] 
         return contour_plot_limits
