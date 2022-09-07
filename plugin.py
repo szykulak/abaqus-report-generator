@@ -4,7 +4,13 @@ from odbAccess import*
 
 def extractor_function(odb_dir_path, step_name, frames, results_dir_path, results_dir_name, include_mesh_data, export_to_csv, take_model_screenshots,
                        field_output_names, set_name, instance_name, instance_set_name, field_output, value, minimum, maximum,
-                       view_names, fo_disp_vars, item_type, item_names, contour_plot_limits): #tu przyjmowac wszystkie argumenty z gui 
+                       view_names, fo_disp_vars, item_type, item_names, contour_plot_limits):
+    '''
+     TODO:
+     - jakies krotkie readme z objasnieniem pol 
+     - testowanie w roznych konfiguracjach (zeby eksport dziaial, moze modele prostowania zrobic XD)
+     - teoria
+     '''
 
     user_data = {
         "ODB directory path": odb_dir_path,
