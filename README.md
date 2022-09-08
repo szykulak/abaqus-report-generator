@@ -9,7 +9,8 @@ Fields explanation:
 1. Basics:
 
 
-    ![image1](C:\Users\asus\Desktop\Screenshot_4.jpg)
+    <img width="135" alt="Screenshot_4" src="https://user-images.githubusercontent.com/48133712/188970960-196af625-f0c1-4f85-b859-6e5e22a88559.png">
+
     - ODB directory path: an absolute path to the directory with .odb files to create report from. ODBs need to be similar: all of them must contain the same field outputs and steps, parts must have the same names etc. 
     - Step: name of simulation step
     - Frames: numbers of frames separated with a comma, e.g. 98,99,100
@@ -23,7 +24,8 @@ Fields explanation:
 
 2. CSV Export:
 
-    ![image2](C:\Users\asus\Desktop\Screenshot_9.jpg)
+    <img width="136" alt="Screenshot_9" src="https://user-images.githubusercontent.com/48133712/188971023-001bebb6-9352-4c72-93df-8bf774765c8c.png">
+
     I:
     - Field output names: Name of field outputs to export separated with a comma
     - Set name: Name of element set to export (if the field is filled in, "Instance name" and "Instance set name" need to be empty and the other way round)
@@ -38,7 +40,8 @@ Fields explanation:
 
 3. Screenshots:
 
-    ![image2](C:\Users\asus\Desktop\Screenshot_11.jpg)
+    <img width="136" alt="Screenshot_11" src="https://user-images.githubusercontent.com/48133712/188971065-f0d5226c-091f-42b7-8800-26ec13fd3285.png">
+
     - Views: names of views that will be included separated with a comma, possible values: Iso, Front, Back, Top, Bottom, Left, Right and names of custom views, e.g. User-1 (the last one needs to be created manually in ABAQUS first) 
     - Field output display variables: field outputs that will be displayed. It needs to be passed in following format: **FIELD OUTPUT1:REFINEMENT1,REFINEMENT2;FIELDOUTPUT2:REFINEMENT3,REFINEMENT4**, for example:
     RM:RM1;RF:Magnitude;PEEQ;S:Mises,S11
