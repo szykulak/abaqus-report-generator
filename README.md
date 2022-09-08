@@ -30,7 +30,8 @@ Fields explanation:
     - Field output names: Name of field outputs to export separated with a comma
     - Set name: Name of element set to export (if the field is filled in, "Instance name" and "Instance set name" need to be empty and the other way round)
     - Instance name: Name of a specific model (or part) instance 
-    - Instance set name: Name of a set which belongs to the instance passed above 
+    - Instance set name: Name of a set which belongs to the instance passed above
+     
     II:
     Fill in value range for the field output need to be specified
     - Field output: primary field output variable name, e.g. "S"
