@@ -37,8 +37,6 @@ class ODBExtractor(object):
         self.open_odbs()
 
     def open_odbs(self):
-        # config = self.user_data
-        # config = open("C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json") #TODO zeby nie byla zahardkodowana 
 
         data = self.user_data
         odb_dir_path = data["ODB directory path"]
@@ -54,10 +52,7 @@ class ODBExtractor(object):
                 continue
         
     def execute_without_ui(self, odb_object, name):
-        #todo przerzucic to do jakiejs metody ktora zwraca wczytany plik
-        # file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
 
-        # data = json.load(file)
         data = self.user_data
         step_name = str(data["Step name"])
         frames = str(data["Frames"])
@@ -82,7 +77,7 @@ class ODBExtractor(object):
             self.export_to_csv(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum)
         if take_screenshots:
             self.take_model_screenshots(odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars)
-        # odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars
+        
          
 
     def export_to_csv(self, odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum):
@@ -99,7 +94,7 @@ class ODBExtractor(object):
             error
 
         framesList = self.parse_to_frames(frames)
-        print "frames list " + str(framesList)
+        # print "frames list " + str(framesList)
         for frame in framesList:
             
             file_name = folder_path
@@ -117,7 +112,7 @@ class ODBExtractor(object):
                 print " " + str(error)
 
             fieldoutpuNamesTab = self.parse_to_field_output(field_output_names)
-            print "field output names list " + str(fieldoutpuNamesTab)
+            # print "field output names list " + str(fieldoutpuNamesTab)
             elementsInstancesNames = []
             elementsOffsetTable = {}
             nodesInstancesNames = []
@@ -484,7 +479,7 @@ class ODBExtractor(object):
         return tab
 
     def exportElements(self, odb, modelPath, elementsInstancesNames, nodesOffsetTable):
-        print "model path " + modelPath
+        # print "model path " + modelPath
         myFile = open(modelPath+'ELEMENTS.csv','w')
         for i in range(len(elementsInstancesNames)):
             for j in range(len(odb.rootAssembly.elementSets[" ALL ELEMENTS"].elements)):
@@ -813,6 +808,7 @@ class ODBExtractor(object):
                 tabFilesHandler = []
 
     def take_model_screenshots(self, odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars):
+        print "executing take_model_screenshots"
         views_list=views.split(",")
         frames_list = self.parse_to_frames(frames)
         session.graphicsOptions.setValues(backgroundStyle=SOLID, 
@@ -843,21 +839,20 @@ class ODBExtractor(object):
             session.viewports['Viewport: 1'].odbDisplay.setValues(visibleDisplayGroups=(display_group,     ))
             session.viewports['Viewport: 1'].odbDisplay.displayGroupInstances[str(display_group.name)].setValues(
              lockOptions=OFF)  
-
-            # TODO set contour plot limits 
+ 
             for key in display_var_dict:
                 #display_var_dict[key] = lista refinementow
                 screenshot_path = screenshot_path_copy_1
                 screenshot_path += key
                 screenshot_path += "\\"
                 screenshot_path_copy_2 = screenshot_path
-                print "key " + str(key)
-                print "value" + str(display_var_dict[key])
+                # print "key " + str(key)
+                # print "value" + str(display_var_dict[key])
 
                 if type(display_var_dict[key]) == OrderedDict:
                     secondary_display_vars = display_var_dict[key]
                     for var in secondary_display_vars:
-                        print "var: " + str(var)
+                        # print "var: " + str(var)
                         screenshot_path = screenshot_path_copy_2
                         screenshot_path += str(var)
                         screenshot_path += "\\"
@@ -904,16 +899,10 @@ class ODBExtractor(object):
     
 
     def create_display_group(self):
-        # todo chyba zrobie tylko jeden item type at a time - dropdown w ui
-        # file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
-        # data = json.load(file)
         data = self.user_data
 
         item_type = data["Item type to display"] 
         items_to_display =[str(p) for p in data["Names of items to display"].split(",")]
-        # elements_to_display = data["Elements to display"]
-        # nodes_to_display = data["Nodes to display"]
-        # surfaces_to_display = data["Surfaces to display"]
         
         session.linkedViewportCommands.setValues(_highlightLinkedViewports=True)
         if item_type.lower() == "parts":
@@ -938,7 +927,6 @@ class ODBExtractor(object):
 
     def parse_contour_plot_limits(self):
         # returns a 2d array eg [[21,37], [21,37],[21,37], ['']]
-        # file = open('C:\\tmp\\abaqus_plugins\\report_generator_plugin\\UserData.json')
         data = self.user_data
         contour_plot_limits = [[float(y) if y != "" else None for y in x.split(",")] \
                                for x in data["Contour plot limits"].split(";")] 
@@ -1020,8 +1008,7 @@ class ODBExtractor(object):
                 chunk_sizes.append(len(dict_values))
             else:
                 dict_key = t 
-                chunk_sizes.append(1)
-                # dict values = jakis chunk ?? 
+                chunk_sizes.append(1) 
             display_variable_dict[dict_key] = dict_values
 
         # podzielenie tablicy z limitami na kawalki wielkosci tablic z secondary disp variables  
@@ -1031,23 +1018,23 @@ class ODBExtractor(object):
             contour_plot_limits_split.append(contour_plot_limits[i:i+cs])
             i +=cs
         
-        #iteracja po wczesniej stworzonym dictionary zeby dodac plot limits
-        print "dict before: "+ str(display_variable_dict) 
-        print "podzielona tabica: "+ str(contour_plot_limits_split)
+        # iteracja po wczesniej stworzonym dictionary zeby dodac plot limits
+        # print "dict before: "+ str(display_variable_dict) 
+        # print "podzielona tabica: "+ str(contour_plot_limits_split)
         for k_index, key in enumerate(display_variable_dict):
             if display_variable_dict[key]!=[]:
                 plot_limits = OrderedDict()
                 disp_var_array = display_variable_dict[key]
                 for v_index, var in enumerate(disp_var_array):
-                    print "disp var arrray: " + str(disp_var_array)
-                    print "k index: " + str(k_index)
-                    print "v index: " + str(v_index)
+                    # print "disp var arrray: " + str(disp_var_array)
+                    # print "k index: " + str(k_index)
+                    # print "v index: " + str(v_index)
 
                     plot_limits[var]=contour_plot_limits_split[k_index][v_index]
             else:
                 plot_limits =  contour_plot_limits_split[k_index][0]
             display_variable_dict[key] = plot_limits
-        print "display variable dict: "+ str(display_variable_dict)
+        # print "display variable dict: "+ str(display_variable_dict)
         return display_variable_dict
 
     
