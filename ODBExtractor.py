@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import os
 import sys
 from odbAccess import*
@@ -25,13 +26,21 @@ from abaqus import session
 import json 
 from collections import OrderedDict
 from FieldOutputUtils import set_field_output_display_variables
+from fpdf import FPDF
+import glob
+import win32com.client
+# from docx import Document
+#   https://www.partitionwizard.com/partitionmanager/the-specified-module-could-not-be-found.html
+# https://www.researchgate.net/post/Hello_everyone_I_am_trying_to_import_python_libraries_such_as_PANDA_and_pywin32_in_Abaqus_environment_Can_i_know_if_anyone_has_tried_this_please
+
 
 
 class ODBExtractor(object):
 
     def __init__(self, user_data): 
         self.user_data = user_data
-        self.field_output_display_vars = set_field_output_display_variables() 
+        self.field_output_display_vars = set_field_output_display_variables()
+        self.pdf_report = None
 
     def run_extractor(self):
         self.open_odbs()
@@ -72,12 +81,126 @@ class ODBExtractor(object):
         export_to_csv = data["Export to csv"]
         take_screenshots = data["Take model screenshots"]
         include_mesh_data = data["Include mesh data"]
+        mesh_on = data["Mesh on"]
+
+        self.pdf_report = FPDF(orientation = 'P', unit = 'mm', format='A4')
+        self.pdf_report.add_page() 
+        self.pdf_report.set_auto_page_break(auto=True)
+        self.pdf_report.set_font('Arial', 'B', 16)
+
+        
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt= "Simulation report ")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.set_font('Arial', 'B', 14)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt= "Table of contents ")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.set_font('Arial', '', 11)
+        ord_number = 1
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt= str(ord_number)+". Overview ")
+        ord_number +=1
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt=str(ord_number)+". Assembly data")
+        ord_number +=1
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt=str(ord_number)+". Material properties ")
+        ord_number +=1
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt=str(ord_number)+". Steps information ")
+        ord_number +=1
+        if take_screenshots:
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt=str(ord_number)+". Results visualisation ")
+            ord_number +=1
+        if include_mesh_data:
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt=str(ord_number)+". Mesh properties")
+            ord_number +=1
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+
+        self.pdf_report.set_font('Arial', 'B', 14)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Overwiew")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        # todo table of contents
+        self.pdf_report.set_font('Arial', '', 11)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt= "Model name: "+name)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt= "Geometry: ")
+        self.take_geometry_screenshot(odb_object,folder_path,folder_name)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+
+        # todo jakies table of contents, assembly data itp
+        # self.pdf_report.set_font('Arial', 'B', 14)
+        self.pdf_report.set_font('Arial', 'B', 14)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Assembly data")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.set_font('Arial', '', 11)
+        self.get_assembly_information(odb_object,folder_path,folder_name)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.set_font('Arial', 'B', 14)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Material properties ")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.set_font('Arial', '', 11)
+        self.get_material_properties(odb_object)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.set_font('Arial', 'B', 14)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Steps information ")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.set_font('Arial', '', 11)
+        self.get_steps_data(odb_object)
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+
         
         if export_to_csv:
             self.export_to_csv(odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum)
         if take_screenshots:
-            self.take_model_screenshots(odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars)
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+            self.pdf_report.set_font('Arial', 'B', 14)
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Results visualisation ")
+            self.pdf_report.set_font('Arial', '', 11)
+            self.take_model_screenshots(odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars,mesh_on)
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+            self.pdf_report.set_font('Arial', '', 11)
+        if include_mesh_data:
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+            self.pdf_report.set_font('Arial', 'B', 14)
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Mesh properties")
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+            self.pdf_report.set_font('Arial', '', 11)
+            self.get_mesh_properties(odb_object)
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
         
+        self.create_pdf_report(name, folder_path,folder_name)
+        
+    def create_pdf_report(self, odb_name, folder_path, folder_name): # https://pyfpdf.readthedocs.io/en/latest/reference/FPDF/index.html
+        # fpdf = FPDF(orientation = 'P', unit = 'mm', format='A4')
+        # 
+        path = folder_path + "\\"
+        path += folder_name
+        path += "\\"
+        pdfs_path = path
+        path += odb_name  
+        try:  
+                os.makedirs(path)
+        except OSError as error:
+            error
+        path += '_report.pdf'
+        self.pdf_report.output(path, 'F')
+        word = win32com.client.Dispatch("Word.Application")
+        word.visible = 1
+
+        # pdfs_path = "C:\\Users\\asus\\Desktop\\rep\\"  # folder where the .pdf files are stored
+        reqs_path = pdfs_path #?
+        for i, doc in enumerate(glob.iglob(pdfs_path + "*.pdf")):
+            print(doc)
+            filename = doc.split('\\')[-1]
+            in_file = os.path.abspath(doc)
+            print(in_file)
+            wb = word.Documents.Open(in_file)
+            out_file = os.path.abspath(reqs_path + filename[0:-4] + ".docx".format(i))
+            print("outfile\n", out_file)
+            wb.SaveAs2(out_file, FileFormat=16)  # file format for docx
+            print("success...")
+            wb.Close()
+
+        word.Quit()
+        
+        
+
          
 
     def export_to_csv(self, odb_object, step_name,frames,set_name,field_output_names,instance_name,instance_set_name,folder_path,folder_name,file_name,field_output,value,minimum,maximum):
@@ -807,10 +930,21 @@ class ODBExtractor(object):
                     tabFilesHandler[j].close()
                 tabFilesHandler = []
 
-    def take_model_screenshots(self, odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars):
+    def take_model_screenshots(self, odb_object, step_name,frames,folder_path,folder_name,file_name,views,fo_vars,mesh_on):
         print "executing take_model_screenshots"
+
         views_list=views.split(",")
         frames_list = self.parse_to_frames(frames)
+        if mesh_on is False:
+            session.viewports['Viewport: 1'].odbDisplay.commonOptions.setValues(
+        visibleEdges=FEATURE)
+        else:
+            session.viewports['Viewport: 1'].odbDisplay.commonOptions.setValues(
+        visibleEdges=EXTERIOR)
+
+
+        session.viewports['Viewport: 1'].viewportAnnotationOptions.setValues(triad=OFF, 
+        legend=ON, title=OFF, state=OFF, annotations=OFF, compass=OFF, legendBox=OFF, legendNumberFormat=FIXED)
         session.graphicsOptions.setValues(backgroundStyle=SOLID, 
         backgroundColor='#FFFFFF')
         session.viewports['Viewport: 1'].setValues(displayedObject=odb_object)
@@ -829,6 +963,8 @@ class ODBExtractor(object):
         plot_limits = self.parse_contour_plot_limits()
 
         for frame in frames_list:
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt= "")
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt= "Frame "+str(frame))
             session.viewports['Viewport: 1'].odbDisplay.setFrame(step=step_name, 
             frame=frame)
             screenshot_path = screenshots_dir_path + str(frame)
@@ -873,6 +1009,9 @@ class ODBExtractor(object):
                             screenshot_name = screenshot_path + view
                             session.viewports['Viewport: 1'].view.setValues(session.views[str(view)])
                             session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+                            screenshot_name += '.png'
+                            self.pdf_report.image(screenshot_name, w=185,h=80)
+                            self.pdf_report.multi_cell(h=5.0,w=0, align='C',txt= str(fo_object.var_label)+": "+str(fo_object.refinement[1])+", view: "+ str(view))
                         
                 else:
                     screenshot_path = screenshot_path_copy_1
@@ -895,7 +1034,986 @@ class ODBExtractor(object):
                             screenshot_name = screenshot_path +view
                             session.viewports['Viewport: 1'].view.setValues(session.views[str(view)])
                             session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+                            screenshot_name += '.png'
+                            self.pdf_report.image(screenshot_name, w=185,h=80)
+                            self.pdf_report.multi_cell(h=5.0,w=0, align='C',txt= str(fo_object.var_label)+", view: "+ str(view))
                     screenshot_path = screenshot_path_copy_1
+    
+    def take_geometry_screenshot(self,odb_object,folder_path,folder_name):
+        session.viewports['Viewport: 1'].odbDisplay.commonOptions.setValues(
+        visibleEdges=FEATURE)
+        session.viewports['Viewport: 1'].viewportAnnotationOptions.setValues(triad=OFF, 
+        legend=OFF, title=OFF, state=OFF, annotations=OFF, compass=OFF, legendBox=OFF, legendNumberFormat=FIXED)
+        session.graphicsOptions.setValues(backgroundStyle=SOLID, 
+        backgroundColor='#FFFFFF')
+        session.viewports['Viewport: 1'].setValues(displayedObject=odb_object)
+        # session.mdbData.summary()
+        # session.viewports['Viewport: 1'].odbDisplay.display.setValues(plotState=(
+        # CONTOURS_ON_DEF, ))
+
+        folder_path += "\\"
+        folder_path += folder_name 
+        folder_path += "\\"
+        try:
+            os.makedirs(folder_path)
+        except OSError as error:
+            error
+        screenshot_name = folder_path + "geometry"
+
+        session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+        screenshot_name += '.png'
+        self.pdf_report.image(screenshot_name, w=185,h=80)
+
+
+    def get_mesh_properties(self, odb_object): #todo zwrocic, zapisac, nie prinotwac wszystkiego ?? 
+        assembly = odb_object.rootAssembly
+
+        # For each instance in the assembly.
+
+        numNodes = numElements = 0
+        mesh_properties_array = []
+
+        for name, instance in assembly.instances.items():
+            mesh_dict = {}
+            mesh_dict["instance name"] = name
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Instance: "+ str(name))
+            n = len(instance.nodes)
+            print 'Number of nodes of instance %s: %d' % (name, n)
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Number of nodes: "+ str(n))
+            mesh_dict["number of nodes"] = n
+            numNodes = numNodes + n
+
+            n = len(instance.elements)
+            print 'Number of elements of instance ', name, ': ', n
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Number of all elements: "+ str(n))
+            mesh_dict["number of elements"] = n
+            numElements = numElements + n
+
+            # print 'ELEMENT CONNECTIVITY'
+            # print ' Number  Type    Connectivity'
+            element_types=[]
+            for element in instance.elements:
+                # print '%5d %8s' % (element.label, element.type), # zliczyc np 2137 elementu typu r2d2 itd. 
+                element_types.append(element.type)
+                # for nodeNum in element.connectivity:
+                    # print '%4d' % nodeNum
+            element_types_dict = {element:element_types.count(element) for element in element_types}
+            mesh_dict["element_types"]=element_types_dict
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Element types:")
+            for key in element_types_dict:
+                self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt=str(key)+": "+str(element_types_dict[key]))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+
+            mesh_properties_array.append(mesh_dict)
+            print "Element types" + str(element_types_dict)
+        print 'Number of instances: ', len(assembly.instances)
+        print 'Total number of elements: ', numElements
+        print 'Total number of nodes: ', numNodes
+        summary = {}
+        summary["Number of istances"]=len(assembly.instances)
+        summary["Total number of elements"]=numElements
+        summary["Total number of nodes"]=numNodes
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Mesh summary ")
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Number of istances: "+str(summary["Number of istances"]))
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Total number of elements: "+str(summary["Total number of elements"]))
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Total number of nodes: "+str(summary["Total number of nodes"]))
+        # self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Mesh properties array: "+str(mesh_properties_array))
+
+
+        props = (mesh_properties_array,summary) 
+        print " mesh summary: "+str(props)
+        return props
+
+    '''
+        TODO:
+        - model name 
+        - boundary conditions - nwm czy sie da z odb 
+        - assembly data (what parts and how many instances) - add screenshot??? 
+        - interactions - nwm czy sie da z odb
+        - materials DONE sort of
+        - step information
+        https://stackoverflow.com/questions/66232369/how-to-know-a-material-name-of-a-pid-in-abaqus-odb-filenot-mdb-file-using-pyth
+        
+        '''
+    def get_assembly_information(self, odb_object,folder_path,folder_name):
+        '''
+                leaf = dgo.Leaf(leafType=DEFAULT_MODEL)
+    session.viewports['Viewport: 1'].odbDisplay.displayGroup.add(leaf=leaf)
+    leaf = dgo.LeafFromPartInstance(partInstanceName=("BASIS-1", ))
+    session.viewports['Viewport: 1'].odbDisplay.displayGroup.intersect(leaf=leaf)
+    leaf = dgo.Leaf(leafType=DEFAULT_MODEL)
+    session.viewports['Viewport: 1'].odbDisplay.displayGroup.add(leaf=leaf)
+    leaf = dgo.LeafFromPartInstance(partInstanceName=("BERKOVICH_200NM-1", ))
+    session.viewports['Viewport: 1'].odbDisplay.displayGroup.intersect(leaf=leaf)
+    leaf = dgo.Leaf(leafType=DEFAULT_MODEL)
+    session.viewports['Viewport: 1'].odbDisplay.displayGroup.add(leaf=leaf)
+    leaf = dgo.LeafFromPartInstance(partInstanceName=("SPECIMEN-1", ))
+    session.viewports['Viewport: 1'].odbDisplay.displayGroup.intersect(leaf=leaf)
+    leaf = dgo.Leaf(leafType=DEFAULT_MODEL)
+    session.viewports['Viewport: 1'].odbDisplay.displayGroup.add(leaf=leaf)
+        
+        '''
+
+        self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Instances: ")
+       
+        # sections = odb_object.sections
+        # cell_location = 40
+        instances = odb_object.rootAssembly.instances
+        session.viewports['Viewport: 1'].odbDisplay.commonOptions.setValues(
+        visibleEdges=FEATURE)
+        session.viewports['Viewport: 1'].viewportAnnotationOptions.setValues(triad=OFF, 
+        legend=OFF, title=OFF, state=OFF, annotations=OFF, compass=OFF, legendBox=OFF, legendNumberFormat=FIXED)
+        session.graphicsOptions.setValues(backgroundStyle=SOLID, 
+        backgroundColor='#FFFFFF')
+
+        for name,instance in instances.items():
+            leaf = dgo.LeafFromPartInstance(partInstanceName=(str(name), ))
+            session.viewports['Viewport: 1'].odbDisplay.displayGroup.intersect(leaf=leaf)
+            
+
+            # session.mdbData.summary()
+            # session.viewports['Viewport: 1'].odbDisplay.display.setValues(plotState=(
+            # CONTOURS_ON_DEF, ))
+
+            folder_path += "\\"
+            folder_path += folder_name 
+            folder_path += "\\"
+            try:
+                os.makedirs(folder_path)
+            except OSError as error:
+                error
+            screenshot_name = folder_path + str(name)
+
+            session.printToFile(fileName=str(screenshot_name), format=PNG, canvasObjects=((session.viewports['Viewport: 1'], )))
+            screenshot_name += '.png'
+            self.pdf_report.image(screenshot_name, w=185,h=80)
+            self.pdf_report.multi_cell(h=5.0,w=0, align='C',txt=str(name))
+
+            leaf = dgo.Leaf(leafType=DEFAULT_MODEL)
+            session.viewports['Viewport: 1'].odbDisplay.displayGroup.add(leaf=leaf)
+            #todo add screenshots (iso)
+
+
+    def get_material_properties(self, odb_object):
+        
+        # sections = odb_object.sections # to zwraca dictionary z nazwami sekcji 
+        # print "sections " + str(sections)
+        # print "element sets " + str(odb_object.rootAssembly.instances['EX3-1'].elementSets)
+        # my_elset = odb_object.rootAssembly.instances['EX3-1'].elementSets['M1']
+        # element_from_set = my_elset.elements[0] # list with mesh element object, e.g. first
+        # sec_category = element_from_set[0].sectionCategory.name[0]
+        # print "section category" + sec_category
+        instances = odb_object.rootAssembly.instances
+       
+        sections = odb_object.sections
+        # cell_location = 40
+
+        for name,instance in instances.items(): #tu to chyba lepsza by byla tabela ale nwm 
+            # print "instance name:"+str(name)
+            # self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt=str(name))
+            # cell_location +=10
+            section_assignments = odb_object.rootAssembly.instances[name].sectionAssignments
+            materials = []
+
+            # self.pdf_report.set_font('Arial', 'B', 14)    
+            # self.pdf_report.multi_cell(h=5.0,w=0, txt="Section assignments:")
+            # cell_location +=10
+
+            for section_assignment in section_assignments:
+                self.pdf_report.multi_cell(h=5.0,w=0, txt=str(section_assignment.sectionName))
+                # cell_location +=10
+                # print " section assignment: "+str(section_assignment)
+                section_name = section_assignment.sectionName
+                section = sections[section_name]
+
+                # self.pdf_report.set_font('Arial', 'B', 12)
+                self.pdf_report.multi_cell(h=5.0,w=0, txt="Materials: ")
+                # cell_location +=10
+
+                # self.pdf_report.set_font('Arial', '', 12)
+                self.pdf_report.multi_cell(h=5.0,w=0, txt=str(materials))
+                # cell_location +=10
+                
+                # materials.append(section.material)
+                print "material name:"+str(materials) # todo wyciagnac wszystkie pola i lapac wyjatki jak ktoregos nie ma  
+                # print "material density table; "+ str(odb_object.materials[section.material].density.table) # inne tabele tez???
+                # # print "material elastic table; "+ str(odb_object.materials[section.material].depvar) # inne tabele tez???
+                # print "material elastic table; "+ str(odb_object.materials[section.material].elastic.table) # inne tabele tez???
+                # print "material plastic obj as trimmed string: "+ str(odb_object.materials[section.material].plastic)[1:-1]
+                # s = str(odb_object.materials[section.material].plastic)[1:-1]
+                # json_acceptable_string = s.replace("'", "\"")
+                # print "after quote replacement: " + json_acceptable_string
+                # d = json.loads(s)
+                # for m in odb_object.materials[section.material].values():
+                # self.pdf_report.set_font('Arial', 'B', 12)
+                # self.pdf_report.cell(40, cell_location,"Material properties ",ln=2)
+                # cell_location +=10
+                # self.pdf_report.set_font('Arial', '', 12)
+
+                #     print "m: " + str(m)
+                print "#################### material properties #####################"
+                self.pdf_report.multi_cell(h=5.0,w=0, txt="Material properties: ")
+                
+                try:
+                    print "acoustic medium: "+ str(odb_object.materials[section.material].acousticMedium)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Acoustic medium: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Bulk table:"+ str(odb_object.materials[section.material].acousticMedium.bulkTable))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Volumetric table:"+ str(odb_object.materials[section.material].acousticMedium.volumetricTable))
+                    
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "brittle cracking: "+ str(odb_object.materials[section.material].brittleCracking)
+                    # self.pdf_report.cell(40, cell_location,"brittle cracking: "+ str(odb_object.materials[section.material].brittleCracking))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Brittle cracking: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].brittleCracking.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].brittleCracking.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].brittleCracking.type))
+
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "cap plasticity: "+ str(odb_object.materials[section.material].capPlasticity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Cap plasticity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].capPlasticity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].capPlasticity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "cast iron plasticity: "+ str(odb_object.materials[section.material].castIronPlasticity)
+                    # self.pdf_report.cell(40, cell_location,"Cast iron plasticity: "+ str(odb_object.materials[section.material].castIronPlasticity))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Cast iron plasticity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].castIronPlasticity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].castIronPlasticity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "clay plasticity: "+ str(odb_object.materials[section.material].clayPlasticity)
+                    # self.pdf_report.cell(40, cell_location,"clay plasticity: "+ str(odb_object.materials[section.material].clayPlasticity))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Clay plasticity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].clayPlasticity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].clayPlasticity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Hardening:"+ str(odb_object.materials[section.material].clayPlasticity.hardening))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "concrete: "+ str(odb_object.materials[section.material].concrete)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Concrete: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].concrete.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].concrete.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "concrete damaged plasticity: "+ str(odb_object.materials[section.material].concreteDamagedPlasticity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Concrete: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].concreteDamagedPlasticity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].concreteDamagedPlasticity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "conductivity: "+ str(odb_object.materials[section.material].conductivity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Conductivity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].conductivity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].conductivity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].conductivity.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "creep: "+ str(odb_object.materials[section.material].creep)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Creep: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].creep.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].creep.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Strain hardenng law:"+ str(odb_object.materials[section.material].creep.law))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "crushable foam: "+ str(odb_object.materials[section.material].crushableFoam)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Crushable foam: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].crushableFoam.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].crushableFoam.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Hardening:"+ str(odb_object.materials[section.material].crushableFoam.hardening))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "ductile damage initiation: "+ str(odb_object.materials[section.material].ductileDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Ductile damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].ductileDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].ductileDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].ductileDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "fld damage initiation: "+ str(odb_object.materials[section.material].fldDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Fld damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].fldDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].fldDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].fldDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "flsd damage initiation: "+ str(odb_object.materials[section.material].flsdDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Flsd damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].flsdDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].flsdDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].flsdDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "johnson cook damage initiation: "+ str(odb_object.materials[section.material].johnsonCookDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Johnson Cook damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].johnsonCookDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].johnsonCookDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].johnsonCookDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "maxe damage initiation: "+ str(odb_object.materials[section.material].maxeDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Max e damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].maxeDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].maxeDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].maxeDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "maxs damage initiation: "+ str(odb_object.materials[section.material].maxsDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Max s damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].maxsDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].maxsDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].maxsDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "maxpe damage initiation: "+ str(odb_object.materials[section.material].maxpeDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Max pe damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].maxpeDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].maxpeDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].maxpeDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "maxps damage initiation: "+ str(odb_object.materials[section.material].maxpsDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Max ps damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].maxpsDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].maxpsDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].maxpsDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "mk damage initiation: "+ str(odb_object.materials[section.material].mkDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Mk damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].mkDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].mkDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].mkDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "msfld damage initiation: "+ str(odb_object.materials[section.material].msfldDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Msfld damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].msfldDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].msfldDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].msfldDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "quade damage initiation: "+ str(odb_object.materials[section.material].quadeDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Quade damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].quadeDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].quadeDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].quadeDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "quads damage initiation: "+ str(odb_object.materials[section.material].quadsDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Quads damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].quadsDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].quadsDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].quadsDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "shear damage initiation: "+ str(odb_object.materials[section.material].shearDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Shear damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].shearDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].shearDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].shearDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "hashin damage initiation: "+ str(odb_object.materials[section.material].hashinDamageInitiation)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Hashin damage initiation: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].hashinDamageInitiation.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].hashinDamageInitiation.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].hashinDamageInitiation.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "damping: "+ str(odb_object.materials[section.material].damping)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Damping: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Alpha:"+ str(odb_object.materials[section.material].damping.alpha))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Beta:"+ str(odb_object.materials[section.material].damping.beta))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Composite:"+ str(odb_object.materials[section.material].damping.composite))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Structural:"+ str(odb_object.materials[section.material].damping.structural))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "deformation plasticity: "+ str(odb_object.materials[section.material].deformationPlasticity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Deformation plasticity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].deformationPlasticity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].deformationPlasticity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "density: "+ str(odb_object.materials[section.material].density)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Density: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].density.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].density.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Distribution type:"+ str(odb_object.materials[section.material].density.distributionType))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Field name:"+ str(odb_object.materials[section.material].density.fieldName))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "depvar: "+ str(odb_object.materials[section.material].depvar)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Depvar: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Delete var:"+ str(odb_object.materials[section.material].depvar.deleteVar))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Number of solution-dependent state variables required at each integration point:"+ str(odb_object.materials[section.material].depvar.n))
+                    
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "dielectric: "+ str(odb_object.materials[section.material].dielectric)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Dielectric: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].dielectric.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].dielectric.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Frequency dependency:"+ str(odb_object.materials[section.material].dielectric.frequencyDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].dielectric.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "diffusivity: "+ str(odb_object.materials[section.material].diffusivity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Diffusivity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].diffusivity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].diffusivity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Diffusion law:"+ str(odb_object.materials[section.material].diffusivity.law))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].dielectric.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "drucker prager: "+ str(odb_object.materials[section.material].druckerPrager)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Drucker-Prager: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].druckerPrager.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].druckerPrager.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Yield criterion:"+ str(odb_object.materials[section.material].druckerPrager.shearCriterion))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Flow potential eccentricity:"+ str(odb_object.materials[section.material].druckerPrager.eccentricity))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "elastic: "+ str(odb_object.materials[section.material].elastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Elastic: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].elastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].elastic.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Moduli:"+ str(odb_object.materials[section.material].elastic.moduli))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Compressive stress:"+ str(odb_object.materials[section.material].elastic.noCompression))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Tensile stress:"+ str(odb_object.materials[section.material].elastic.noTension))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "electrical conductivity: "+ str(odb_object.materials[section.material].electricalConductivity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Electrical conductivity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].electricalConductivity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].electricalConductivity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Frequency dependency:"+ str(odb_object.materials[section.material].electricalConductivity.frequencyDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].electricalConductivity.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "eos: "+ str(odb_object.materials[section.material].eos)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Equation of state model: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].eos.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].eos.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].eos.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Detonation energy:"+ str(odb_object.materials[section.material].eos.detonationEnergy))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Solid table:"+ str(odb_object.materials[section.material].eos.solidTable))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Gas specific table:"+ str(odb_object.materials[section.material].eos.gasSpecificTable))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Reaction table:"+ str(odb_object.materials[section.material].eos.reactionTable))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Gas table:"+ str(odb_object.materials[section.material].eos.gasTable))
+                    
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "expansion: "+ str(odb_object.materials[section.material].expansion)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Expansion: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].expansion.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].expansion.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].expansion.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="User subroutine:"+ str(odb_object.materials[section.material].expansion.userSubroutine))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Zero:"+ str(odb_object.materials[section.material].expansion.zero))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "fluidLeakoff: "+ str(odb_object.materials[section.material].fluidLeakoff)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Fluid leakoff: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].fluidLeakoff.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].fluidLeakoff.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].fluidLeakoff.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "gapFlow: "+ str(odb_object.materials[section.material].gapFlow)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Gap flow: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].gapFlow.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].gapFlow.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].gapFlow.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Kmax:"+ str(odb_object.materials[section.material].gapFlow.kmax))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "gasket thickness behavior: "+ str(odb_object.materials[section.material].gasketThicknessBehavior)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Gasket thickness behavior: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].gasketThicknessBehavior.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].gasketThicknessBehavior.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].gasketThicknessBehavior.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Tensile stiffness factor:"+ str(odb_object.materials[section.material].gasketThicknessBehavior.tensileStiffnessFactor))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "gasket transverse shear elastic: "+ str(odb_object.materials[section.material].gasketTransverseShearElastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Gasket transverse shear elastic: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].gasketTransverseShearElastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Variable units:"+ str(odb_object.materials[section.material].gasketTransverseShearElastic.variableUnits))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].gasketTransverseShearElastic.temperatureDependency))
+                    
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "gasket membrane elastic: "+ str(odb_object.materials[section.material].gasketMembraneElastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Gasket membrane elastic: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].gasketMembraneElastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].gasketMembraneElastic.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "gel: "+ str(odb_object.materials[section.material].gel)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Gel: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].gel.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "heat generation: "+ str(odb_object.materials[section.material].heatGeneration)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="heat generation: "+ str(odb_object.materials[section.material].heatGeneration))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "hyperelastic: "+ str(odb_object.materials[section.material].hyperelastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Hyperelastic: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].hyperelastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].hyperelastic.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].hyperelastic.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Compressible:"+ str(odb_object.materials[section.material].hyperelastic.compressible))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Poisson ratio:"+ str(odb_object.materials[section.material].hyperelastic.poissonRatio))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Material type:"+ str(odb_object.materials[section.material].hyperelastic.materialType))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "hyperfoam: "+ str(odb_object.materials[section.material].hyperfoam)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Hyperfoam: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].hyperfoam.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].hyperfoam.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].hyperfoam.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Poisson ratio:"+ str(odb_object.materials[section.material].hyperfoam.poisson))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "hypoelastic: "+ str(odb_object.materials[section.material].hypoelastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Hypoelastic: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].hypoelastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "inelasticHeatFraction: "+ str(odb_object.materials[section.material].inelasticHeatFraction)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Inelastic Heat Fraction:"+ str(odb_object.materials[section.material].inelasticHeatFraction.fraction))
+                    
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "jouleHeatFraction: "+ str(odb_object.materials[section.material].jouleHeatFraction)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Joule Heat Fraction:"+ str(odb_object.materials[section.material].jouleHeatFraction.fraction))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "latentHeat: "+ str(odb_object.materials[section.material].latentHeat)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Latent heat: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].latentHeat.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "lowDensityFoam: "+ str(odb_object.materials[section.material].lowDensityFoam)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Low density foam: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Element Removal:"+ str(odb_object.materials[section.material].lowDensityFoam.elementRemoval))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Max allowable principal stress:"+ str(odb_object.materials[section.material].lowDensityFoam.maxAllowablePrincipalStress))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Extrapolate stress strain curve:"+ str(odb_object.materials[section.material].lowDensityFoam.extrapolateStressStrainCurve))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Strain rate type:"+ str(odb_object.materials[section.material].lowDensityFoam.strainRateType))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="mu0:"+ str(odb_object.materials[section.material].lowDensityFoam.mu0))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="mu1:"+ str(odb_object.materials[section.material].lowDensityFoam.mu1))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Alpha:"+ str(odb_object.materials[section.material].lowDensityFoam.alpha))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "magneticPermeability: "+ str(odb_object.materials[section.material].magneticPermeability)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Magnetic permeability: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table 1:"+ str(odb_object.materials[section.material].magneticPermeability.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table 2:"+ str(odb_object.materials[section.material].magneticPermeability.table2))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table 3:"+ str(odb_object.materials[section.material].magneticPermeability.table3))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "mohrCoulombPlasticity: "+ str(odb_object.materials[section.material].mohrCoulombPlasticity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Mohr coulomb plasticity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].mohrCoulombPlasticity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].mohrCoulombPlasticity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Deviatoric eccentricity:"+ str(odb_object.materials[section.material].mohrCoulombPlasticity.deviatoricEccentricity))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Meridional eccentricity:"+ str(odb_object.materials[section.material].mohrCoulombPlasticity.meridionalEccentricity))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "moistureSwelling: "+ str(odb_object.materials[section.material].moistureSwelling)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Moisture swelling: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].moistureSwelling.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "mullinsEffect: "+ str(odb_object.materials[section.material].mullinsEffect)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Moisture swelling: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].moistureSwelling.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].mullinsEffect.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Definition:"+ str(odb_object.materials[section.material].mullinsEffect.definition))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "permeability: "+ str(odb_object.materials[section.material].permeability)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Moisture swelling: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].permeability.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Specific weight:"+ str(odb_object.materials[section.material].permeability.specificWeight))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Inertial drag coefficient:"+ str(odb_object.materials[section.material].permeability.inertialDragCoefficient))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].permeability.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].permeability.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "piezoelectric: "+ str(odb_object.materials[section.material].piezoelectric)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Piezoelectric: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].piezoelectric.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type:"+ str(odb_object.materials[section.material].piezoelectric.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].piezoelectric.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "plastic: "+ str(odb_object.materials[section.material].plastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Plastic: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].plastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type of hardening:"+ str(odb_object.materials[section.material].plastic.hardening))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Rate:"+ str(odb_object.materials[section.material].plastic.rate))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Data type:"+ str(odb_object.materials[section.material].plastic.dataType))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Strain range dependency:"+ str(odb_object.materials[section.material].plastic.strainRangeDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Number of backstresses:"+ str(odb_object.materials[section.material].plastic.numBackstresses))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].plastic.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "poreFluidExpansion: "+ str(odb_object.materials[section.material].poreFluidExpansion)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Pore fluid expansion: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].poreFluidExpansion.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type of hardening:"+ str(odb_object.materials[section.material].poreFluidExpansion.zero))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].poreFluidExpansionlastic.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "porousBulkModuli: "+ str(odb_object.materials[section.material].porousBulkModuli)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Porous bulk moduli: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].porousBulkModuli.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].porousBulkModuli.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "porousElastic: "+ str(odb_object.materials[section.material].porousElastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Porous elastic: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].porousElastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Shear definition form:"+ str(odb_object.materials[section.material].porousElastic.shear))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].porousElastic.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "porousMetalPlasticity: "+ str(odb_object.materials[section.material].porousMetalPlasticity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Porous metal plasticity: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].porousMetalPlasticity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Relative density:"+ str(odb_object.materials[section.material].porousMetalPlasticity.relativeDensity))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].porousMetalPlasticity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "regularization: "+ str(odb_object.materials[section.material].regularization)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Regularization: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Rtol:"+ str(odb_object.materials[section.material].regularization.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Strain rate regularization:"+ str(odb_object.materials[section.material].regularization.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "solubility: "+ str(odb_object.materials[section.material].solubility)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Solubility: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table:"+ str(odb_object.materials[section.material].solubility.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency:"+ str(odb_object.materials[section.material].solubility.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "sorption: "+ str(odb_object.materials[section.material].sorption)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Sorption: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Absorption table: "+ str(odb_object.materials[section.material].sorption.absorptionTable))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Law absorption: "+ str(odb_object.materials[section.material].sorption.lawAbsorption))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Exsorption: "+ str(odb_object.materials[section.material].sorption.exsorption))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Law exsorption: "+ str(odb_object.materials[section.material].sorption.lawExsorption))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Scanning: "+ str(odb_object.materials[section.material].sorption.scanning))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Exsorption table: "+ str(odb_object.materials[section.material].sorption.exsorptionTable))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                    # cell_location +=10
+                except AttributeError:
+                    pass
+
+                try:
+                    print "swelling: "+ str(odb_object.materials[section.material].swelling)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Swelling: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Absorption table: "+ str(odb_object.materials[section.material].swelling.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Swelling behavior :"+ str(odb_object.materials[section.material].swelling.law))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency: "+ str(odb_object.materials[section.material].swelling.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                    
+                    # cell_location +=10
+                except AttributeError:
+                    pass
+
+                try:
+                    print "userDefinedField: "+ str(odb_object.materials[section.material].userDefinedField)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="User defined field: "+ str(odb_object.materials[section.material].userDefinedField))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                    # cell_location +=10
+                except AttributeError:
+                    pass
+
+                try:
+                    print "userMaterial: "+ str(odb_object.materials[section.material].userMaterial)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="User material: ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type: "+ str(odb_object.materials[section.material].type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Unsymm: "+ str(odb_object.materials[section.material].unsymm))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Mechanical constants: "+ str(odb_object.materials[section.material].mechanicalConstants))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Thermal constants: "+ str(odb_object.materials[section.material].thermalConstants))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                    # cell_location +=10
+                except AttributeError:
+                    pass
+
+                try:
+                    print "userOutputVariables: "+ str(odb_object.materials[section.material].userOutputVariables)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="User output variables : ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Number of user-defined variables: "+ str(odb_object.materials[section.material].userOutputVariables.n))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                    # cell_location +=10
+                except AttributeError:
+                    pass
+
+                try:
+                    print "viscoelastic: "+ str(odb_object.materials[section.material].viscoelastic)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Viscoelastic : ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table: "+ str(odb_object.materials[section.material].viscoelastic.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Frequency: "+ str(odb_object.materials[section.material].viscoelastic.frequency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type: "+ str(odb_object.materials[section.material].viscoelastic.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Preload: "+ str(odb_object.materials[section.material].viscoelastic.preload))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+
+                    # cell_location +=10
+                except AttributeError:
+                    pass
+
+                try:
+                    print "viscosity: "+ str(odb_object.materials[section.material].viscosity)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Viscosity : ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table: "+ str(odb_object.materials[section.material].viscosity.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Type: "+ str(odb_object.materials[section.material].viscosity.type))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Temperature dependency: "+ str(odb_object.materials[section.material].viscosity.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                except AttributeError:
+                    pass
+
+                try:
+                    print "Viscous: "+ str(odb_object.materials[section.material].viscous)
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Viscoelastic : ")
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Table: "+ str(odb_object.materials[section.material].viscous.table))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Creep law: "+ str(odb_object.materials[section.material].viscous.law))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="Ttemperature dependency: "+ str(odb_object.materials[section.material].viscous.temperatureDependency))
+                    self.pdf_report.multi_cell(h=5.0,w=0, txt="")
+                    # cell_location +=10
+                except AttributeError:
+                    pass
+
+    def get_steps_data(self, odb_object):
+        steps = odb_object.steps.values()
+        for step in steps:
+            print "step: " + str(step)
+            print "Step name: "+str(step.name)
+            print "Step description: "+str(step.description)
+            print "Step domain: "+str(step.domain)
+            print "Step time period: "+str(step.timePeriod)
+            print "Prevoius step name: "+str(step.previousStepName)
+            print "geometric nonlinearity: "+str(step.nlgeom)
+            print "mass: "+str(step.mass)
+            print "acoustic mass: "+str(step.acousticMass)
+            print "Frames: "+str(len(step.frames))
+            print "history regions: "+ str(step.historyRegions)
+            print "load Cases: "+ str(step.loadCases)
+            print "mass center: "+ str(step.massCenter)
+            print "inertia about center: "+ str(step.inertiaAboutCenter)
+            print "inertia about origin: "+ str(step.inertiaAboutOrigin)
+            print "acoustic mass center: "+ str(step.acousticMassCenter)
+            # self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Number of istances: "+str(summary["Number of istances"]))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Step name: " + str(step.name))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Description: "+str(step.description))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Step domain: "+str(step.domain))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Time period: "+str(step.timePeriod))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Previous step name: "+str(step.previousStepName))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Geometric nonlinearity: "+str(step.nlgeom))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Mass: "+str(step.mass))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Acoustic mass: "+str(step.acousticMass))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Frames: "+str(len(step.frames)))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="History regions:"+ str(step.historyRegions))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Load cases: "+ str(step.loadCases))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Mass center: "+ str(step.massCenter))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Inertia about center: "+ str(step.inertiaAboutCenter))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Inertia about origin: "+ str(step.inertiaAboutOrigin))
+            self.pdf_report.multi_cell(h=5.0,w=0, align='L',txt="Acoustic mass center: "+ str(step.acousticMassCenter))
+           
+
     
 
     def create_display_group(self):

@@ -1,7 +1,7 @@
 {
-    "ODB directory path": "C:\\tmp\\odb\\3d_std\\",
+    "ODB directory path": "C:\\tmp\\odb\\2d_ecap\\",
     "Step name": "Step-1",
-    "Frames": "5,98,99",
+    "Frames": "5",
     "Field output names": "S,U",
     "Set name": "",
     "Instance name": "",

@@ -48,7 +48,7 @@ Fields explanation:
     RM:RM1;RF:Magnitude;PEEQ;S:Mises,S11
     If field output does not have any refinements then field output name separated with a semicolon is enough
     - Contour plot limits: minimum and maximum field output value that will be shown on the screenshot, passed in following format:
-    **MINIMUM,MAXIMUM;MINIMUM,MAXIMUM;;MINIMUM,MAXIMUM;**. The order of minimum-maximum pairs needs to be exactly the same as order of field output display variables, if you want to leave the deafult setting just do not put anything between semicolons
+    **MINIMUM,MAXIMUM;MINIMUM,MAXIMUM;;MINIMUM,MAXIMUM;**. The order of minimum-maximum pairs needs to be exactly the same as order of field output display variables, if you want to leave the deafult setting just do not put anything between semicolons, e.g if you have limits for two variables you need to put ";;" in the text field 
     - Items to display: type of item that will be displayed, possible values: Parts, Elements, Nodes (WARNING: Might throw an error as the implementation requires some adjustments), Sets
     - Names of items to display: names of items (type chosen above) separated with a comma  
     
